@@ -25,7 +25,6 @@ try:
 except:  # noqa: E722
     pass
 
-
 def main(
         load_8bit: bool = False,
         base_model: str = "",
@@ -74,6 +73,7 @@ def main(
     dataset = load_data(args)
     batches = create_batch(dataset, args.batch_size)
     tokenizer, model = load_model(args)
+
     total = len(batches)
     correct = 0
     current = 0
@@ -168,7 +168,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', choices=["boolq", "piqa", "social_i_qa", "hellaswag", "winogrande", "ARC-Challenge", "ARC-Easy", "openbookqa"],
                         required=True)
-    parser.add_argument('--model', choices=['LLaMA-7B', "LLaMA-13B",'BLOOM-7B', 'GPT-j-6B'], required=True)
+    parser.add_argument('--model', choices=['LLaMA-7B', "LLaMA-13B",'BLOOM-7B', 'GPT-j-6B', 'other'], required=True)
     parser.add_argument('--adapter', choices=['LoRA', 'AdapterP', 'AdapterH', 'Parallel'],
                         required=True)
     parser.add_argument('--base_model', required=True)
