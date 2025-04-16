@@ -8,7 +8,6 @@ import transformers
 from datasets import load_dataset
 from typing import List, Optional, Union
 
-sys.path.append("../")
 from lora_rite import LoRARite
 
 """
@@ -21,7 +20,6 @@ from peft import (  # noqa: E402
     LoraConfig,
     get_peft_model,
     get_peft_model_state_dict,
-    prepare_model_for_kbit_training,
     set_peft_model_state_dict,
 )
 from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaTokenizer, AutoModel  # noqa: F402
@@ -41,7 +39,6 @@ def train(
         learning_rate: float = 3e-4,
         cutoff_len: int = 256,
         val_set_size: int = 2000,
-        use_gradient_checkpointing: bool = False,
         eval_step: int = 200,
         save_step: int = 200,
         # lora hyperparams
@@ -73,7 +70,6 @@ def train(
         f"learning_rate: {learning_rate}\n"
         f"cutoff_len: {cutoff_len}\n"
         f"val_set_size: {val_set_size}\n"
-        f"use_gradient_checkpointing: {use_gradient_checkpointing}\n"
         f"lora_r: {lora_r}\n"
         f"lora_alpha: {lora_alpha}\n"
         f"lora_dropout: {lora_dropout}\n"
@@ -124,7 +120,7 @@ def train(
         model = AutoModelForCausalLM.from_pretrained(
             base_model,
             load_in_8bit=False,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.float32,
             device_map={"": int(os.environ.get("LOCAL_RANK") or 0)},
             trust_remote_code=True,
         )
@@ -181,7 +177,6 @@ def train(
                                                                     ]  # could be sped up, probably
         return tokenized_full_prompt
 
-    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=use_gradient_checkpointing)
     config = LoraConfig(
         r=lora_r,
         lora_alpha=lora_alpha,
@@ -257,6 +252,7 @@ def train(
             num_train_epochs=num_epochs,
             max_steps=num_steps,
             learning_rate=learning_rate,
+            bf16=True,
             logging_steps=10,
             evaluation_strategy="steps" if val_set_size > 0 else "no",
             label_names=["labels"],
