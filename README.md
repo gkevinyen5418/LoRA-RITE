@@ -22,3 +22,10 @@ In the rare case where this assumption is not satisfied, one can manually reorde
 
 This setting is significantly different from what is used in the paper due to the potentially high amount of effort needed to align the environments of pytorch and JAX.
 We adopt the recipe from the LLM-adapter paper, where the datasets are highly overlapped with our original experiments.
+
+Gemma-2B Result
+
+|Optimizer| BOOLQ | PIQA | SIQA | HellaSwag | Winogrande | ARC-E | ARC-C | OBQA | Average |
+| ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | 
+| LoRARite | 62.17 | 73.99 | 67.60 | 66.08 | 58.48 | 77.60 | 59.30 | 69.60 | 66.85 |
+| Adam |  62.87 |73.93 |65.34| 53.16| 55.51 |76.43 |59.55| 68.4| 64.40|
