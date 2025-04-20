@@ -4,8 +4,8 @@ import torch
 from torch.optim.optimizer import Optimizer
 
 
-def create_preconditioner(x, dim):
-  return torch.zeros((x.shape[dim], x.shape[dim]), dtype=x.dtype, device=x.device)
+def create_preconditioner(x):
+  return torch.zeros((x.shape[-1], x.shape[-1]), dtype=x.dtype, device=x.device)
 
 
 class _LoraRiteHelper:
@@ -53,14 +53,6 @@ class _LoraRiteHelper:
     _, shape = self.move_lora_dim_to_last(p, dim)
     return self.restore_original_shape_and_dim(x, dim, shape)
 
-  def change_major_dim(self, x, dim):
-    x = torch.moveaxis(x, dim, 0)
-    return x.reshape(x.shape[0], -1), x.shape
-
-  def reverse_change_major_dim(self, x, dim, shape):
-    x = x.reshape(shape)
-    return torch.moveaxis(x, 0, dim)
-
   def inverse_sqrt(self, x, esc, epsilon, epsilon_root, relative_epsilon=True, force_positive=False):
     if relative_epsilon:
       eps = torch.max(torch.linalg.eigvalsh(p_new))*epsilon_root
@@ -79,28 +71,15 @@ class _LoraRiteHelper:
     return (x + x.T) / 2
 
   def transform_first_moment_to_new_basis(
-      self, m, dual_basis_old, dual_basis, dim, dim_other
+      self, m, p
   ):
-    m, shape = self.move_lora_dim_to_last(m, dim)
-    dual_basis_old, _ = self.move_lora_dim_to_last(dual_basis_old, dim_other)
-    dual_basis, _ = self.move_lora_dim_to_last(dual_basis, dim_other)
-
-    p = dual_basis.T @ dual_basis_old
-    m = m @ p.T
-    return self.restore_original_shape_and_dim(m, dim, shape)
+    return m @ p.T
 
   def transform_second_moment_to_new_basis(
-      self, v, dual_basis_old, dual_basis, dim, dim_other
+      self, v, p
   ):
-    dual_basis_old, _ = self.move_lora_dim_to_last(dual_basis_old, dim_other)
-    dual_basis, _ = self.move_lora_dim_to_last(dual_basis, dim_other)
-
-    p = dual_basis.T @ dual_basis_old
-
     v_new = p @ v @ p.T
     v_new = self.make_symmetric(v_new)
-    trace_old = torch.trace(v)
-    trace_new = torch.trace(v_new)
     v_new = torch.nan_to_num(v_new)
     return v_new
 
@@ -114,17 +93,11 @@ class _LoraRiteHelper:
     escape_mass = torch.minimum(eigen_diff, trace_diff)
     return escape_mass
 
-  def get_unmagnified_grad(
-      self, g, ri, dim
-  ):
-    u, shape = self.move_lora_dim_to_last(g, dim)
-    u = u@ri
-    return self.restore_original_shape_and_dim(u, dim, shape)
+  def get_unmagnified_grad(self, g, ri):
+    return g@ri
 
-  def rotate_update(self, g, ri, dim):
-    u, shape = self.move_lora_dim_to_last(g, dim)
-    u = u@ri.T
-    return self.restore_original_shape_and_dim(u, dim, shape)
+  def rotate_update(self, g, ri):
+    return g@ri.T
 
   def get_preconditioned_update(
       self,
@@ -135,9 +108,8 @@ class _LoraRiteHelper:
       epsilon_root,
       relative_epsilon,
       apply_escape,
-      dim,
   ):
-    u, shape = self.move_lora_dim_to_last(g, dim)
+    u = g
     q = self.make_symmetric(p)
 
     if not apply_escape:
@@ -150,7 +122,7 @@ class _LoraRiteHelper:
     )
     u = u@qir
     u = torch.nan_to_num(u)
-    return self.restore_original_shape_and_dim(u, dim, shape)
+    return u
 
   def update_moment(self, step, update,
                      m, beta: float):
@@ -177,9 +149,8 @@ class _LoraRiteHelper:
     return s
 
   def compute_second_moments(
-      self, update, dim: int
+      self, update
   ):
-    update, _ = self.move_lora_dim_to_last(update, dim)
     s = (update.T @ update) / update.shape[0]
     s = self.make_symmetric(s)
     return s
@@ -206,14 +177,8 @@ class _LoraRiteHelper:
     p = self.make_symmetric(p)
     return  u.to(m.dtype), p.to(m.dtype)
 
-  def get_rotation_and_basis(self, w, dim):
-    w, shape = self.move_lora_dim_to_last(w, dim)
-
-    decomposition = torch.linalg.qr(w)
-
-    r = decomposition[1]
-    u = self.restore_original_shape_and_dim(decomposition[0], dim, shape)
-    return u, r
+  def get_rotation_and_basis(self, w):
+    return torch.linalg.qr(w)
 
   def reduce_rms(self, x):
     return torch.sqrt(torch.mean(torch.pow(x, 2)))
@@ -331,12 +296,16 @@ class LoRARite(Optimizer):
           self.state[p1]["attr"] = types.SimpleNamespace()
           state = self.state[p1]["attr"]
           state.step = 0
-          state.v_l = create_preconditioner(param_l, lora_l_dim)
-          state.v_r = create_preconditioner(param_r, lora_r_dim)
+
+          param_l, _ = helper.move_lora_dim_to_last(param_l, lora_l_dim)
+          param_r, _ = helper.move_lora_dim_to_last(param_r, lora_r_dim)
+
+          state.v_l = create_preconditioner(param_l)
+          state.v_r = create_preconditioner(param_r)
           state.m_l = torch.zeros_like(param_l)
           state.m_r = torch.zeros_like(param_r)
-          state.basis_l_old = torch.zeros_like(param_l)
-          state.basis_r_old = torch.zeros_like(param_r)
+          state.basis_l = torch.zeros_like(param_l)
+          state.basis_r = torch.zeros_like(param_r)
           state.escape_l = 0.0
           state.escape_r = 0.0
 
@@ -345,38 +314,42 @@ class LoRARite(Optimizer):
     for group in self.param_groups:
       # TODO: make this more generic
       for p1, p2 in list(zip(group["params"], group["params"][1:]))[::2]:
-        param_l, param_r = p1.data, p2.data
-
         state = self.state[p1]["attr"]
 
-        update_l, update_r = helper.inf_to_nan(p1.grad.data), helper.inf_to_nan(p2.grad.data)
+        param_l, param_r = p1.data, p2.data
+        param_l, _ = helper.move_lora_dim_to_last(param_l, lora_l_dim)
+        param_r, _ = helper.move_lora_dim_to_last(param_r, lora_r_dim)
 
-        decompose_l = helper.get_rotation_and_basis(param_l, lora_l_dim)
-        decompose_r = helper.get_rotation_and_basis(param_r, lora_r_dim)
-
+        decompose_l = helper.get_rotation_and_basis(param_l)
+        decompose_r = helper.get_rotation_and_basis(param_r)
         basis_l = decompose_l[0]
         basis_r = decompose_r[0]
-
         rotate_l = decompose_l[1]
         rotate_r = decompose_r[1]
-
         rotate_inv_l = torch.linalg.pinv(rotate_l)
         rotate_inv_r = torch.linalg.pinv(rotate_r)
+        p_l = basis_r.T @ state.basis_r
+        p_r = basis_l.T @ state.basis_l
 
-        update_l = helper.get_unmagnified_grad(update_l, rotate_inv_r, lora_l_dim)
-        update_r = helper.get_unmagnified_grad(update_r, rotate_inv_l, lora_r_dim)
+        update_l, update_r = helper.inf_to_nan(p1.grad.data), helper.inf_to_nan(p2.grad.data)
+        update_l, _ = helper.move_lora_dim_to_last(update_l, lora_l_dim)
+        update_r, _ = helper.move_lora_dim_to_last(update_r, lora_r_dim)
+        update_l = helper.get_unmagnified_grad(update_l, rotate_inv_r)
+        update_r = helper.get_unmagnified_grad(update_r, rotate_inv_l)
 
         if update_skipping > 0:
           update_l = helper.skip_update(update_l, update_skipping)
           update_r = helper.skip_update(update_r, update_skipping)
 
-        # TODO: find some other way to do this?
         state.basis_l = basis_l
         state.basis_r = basis_r
+
         state.rotate_inv_l = rotate_inv_l
         state.rotate_inv_r = rotate_inv_r
         state.update_l = update_l
         state.update_r = update_r
+        state.p_l = p_l
+        state.p_r = p_r
 
         g_norm_sq += torch.linalg.norm(update_l)**2
         g_norm_sq += torch.linalg.norm(update_r)**2
@@ -390,34 +363,38 @@ class LoRARite(Optimizer):
         state = self.state[p1]["attr"]
         count = state.step
 
-        basis_l = state.basis_l
-        basis_r = state.basis_r
         rotate_inv_l = state.rotate_inv_l
         rotate_inv_r = state.rotate_inv_r
         update_l = state.update_l
         update_r = state.update_r
+        p_l = state.p_l
+        p_r = state.p_r
+
+        del state.rotate_inv_l
+        del state.rotate_inv_r
+        del state.update_l
+        del state.update_r
+        del state.p_l
+        del state.p_r
+
+        basis_l = state.basis_l
+        basis_r = state.basis_r
 
         if clip_unmagnified_grad > 0:
           if g_norm > clip_unmagnified_grad:
             update_l = update_l/g_norm*clip_unmagnified_grad
             update_r = update_r/g_norm*clip_unmagnified_grad
 
-        s_l = helper.compute_second_moments(update_l, lora_l_dim)
-        s_r = helper.compute_second_moments(update_r, lora_r_dim)
+        s_l = helper.compute_second_moments(update_l)
+        s_r = helper.compute_second_moments(update_r)
 
         transformed_v_l = helper.transform_second_moment_to_new_basis(
             state.v_l,
-            state.basis_r_old,
-            basis_r,
-            lora_l_dim,
-            lora_r_dim,
+            p_l
         )
         transformed_v_r = helper.transform_second_moment_to_new_basis(
             state.v_r,
-            state.basis_l_old,
-            basis_l,
-            lora_r_dim,
-            lora_l_dim,
+            p_r
         )
 
         if apply_escape:
@@ -451,7 +428,6 @@ class LoRARite(Optimizer):
             epsilon_root,
             relative_epsilon,
             apply_escape,
-            lora_l_dim,
         )
         update_r = helper.get_preconditioned_update(
             update_r,
@@ -461,22 +437,15 @@ class LoRARite(Optimizer):
             epsilon_root,
             relative_epsilon,
             apply_escape,
-            lora_r_dim,
         )
 
         m_l = helper.transform_first_moment_to_new_basis(
             state.m_l,
-            state.basis_r_old,
-            basis_r,
-            lora_l_dim,
-            lora_r_dim,
+            p_l
         )
         m_r = helper.transform_first_moment_to_new_basis(
             state.m_r,
-            state.basis_l_old,
-            basis_l,
-            lora_r_dim,
-            lora_l_dim,
+            p_r
         )
 
         m_l = helper.update_first_moments(count, update_l, m_l, beta1)
@@ -489,8 +458,8 @@ class LoRARite(Optimizer):
           update_l = helper.clip_update(update_l, update_capping)
           update_r = helper.clip_update(update_r, update_capping)
 
-        update_l = helper.rotate_update(update_l, rotate_inv_r, lora_l_dim)
-        update_r = helper.rotate_update(update_r, rotate_inv_l, lora_r_dim)
+        update_l = helper.rotate_update(update_l, rotate_inv_r)
+        update_r = helper.rotate_update(update_r, rotate_inv_l)
 
         if weight_decay > 0:
           update_l = update_l + weight_decay * param_l
@@ -515,18 +484,16 @@ class LoRARite(Optimizer):
               balanced_norm / r_norm - 1
           )
 
+        update_l = helper.restore_param_shape(update_l, p1.data, lora_l_dim)
+        update_r = helper.restore_param_shape(update_r, p2.data, lora_r_dim)
         p1.data.add_(update_l.to(p1.data.dtype))
         p2.data.add_(update_r.to(p2.data.dtype))
 
-        basis_l_old = basis_l
-        basis_r_old = basis_r
         state.step += 1
         state.v_l = v_l
         state.v_r = v_r
         state.m_l = m_l
         state.m_r = m_r
-        state.basis_l_old = basis_l_old
-        state.basis_r_old = basis_r_old
         state.escape_l = escape_l
         state.escape_r = escape_r
 
