@@ -30,4 +30,14 @@ Gemma-2B Result
 | LoRARite | 62.91 | 74.86 | 67.50 | 69.30 | 62.04 | 78.45 | 62.29 | 68.80 | 68.27 |
 | Adam |  62.20 | 75.46 | 65.35 | 67.38 | 55.80 |76.60 |58.70| 68.00| 66.19|
 
+### Running the Experiments
 
+```
+cd LLM-Adapters
+
+# evaluate existing lora_rite checkpoint
+bash eval_commonsense.sh
+
+# finetune with lora_rite
+bash finetune_commonsense.sh
+```
