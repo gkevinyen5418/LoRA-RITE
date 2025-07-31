@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta name="google-site-verification" content="EIa-cK-zU5YrjWChnq_OzWMG7sDXGQGNZz69UJkDPpk" />
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>LoRA Done RITE: Robust Invariant Transformation Equilibration for LoRA Optimization | LoRA-RITE</title>
+<meta name="generator" content="Jekyll v3.10.0" />
+<meta property="og:title" content="LoRA Done RITE: Robust Invariant Transformation Equilibration for LoRA Optimization" />
+<meta property="og:locale" content="en_US" />
+<link rel="canonical" href="https://gkevinyen5418.github.io/LoRA-RITE/" />
+<meta property="og:url" content="https://gkevinyen5418.github.io/LoRA-RITE/" />
+<meta property="og:site_name" content="LoRA-RITE" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="LoRA Done RITE: Robust Invariant Transformation Equilibration for LoRA Optimization" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebSite","headline":"LoRA Done RITE: Robust Invariant Transformation Equilibration for LoRA Optimization","name":"LoRA-RITE","url":"https://gkevinyen5418.github.io/LoRA-RITE/"}</script>
+<!-- End Jekyll SEO tag -->
+
+    <link rel="stylesheet" href="/LoRA-RITE/assets/css/style.css?v=d48791c2dce104a87a9a8da102dbc38849e0fd4a">
+    <!-- start custom head snippets, customize with your own _includes/head-custom.html file -->
+
+<!-- Setup Google Analytics -->
+
+
+
+<!-- You can set your favicon here -->
+<!-- link rel="shortcut icon" type="image/x-icon" href="/LoRA-RITE/favicon.ico" -->
+
+<!-- end custom head snippets -->
+
+  </head>
+  <body>
+    <div class="container-lg px-3 my-5 markdown-body">
+      
+      <h1><a href="https://gkevinyen5418.github.io/LoRA-RITE/">LoRA-RITE</a></h1>
+      
+
+      <h1 id="lora-done-rite-robust-invariant-transformation-equilibration-for-lora-optimization">LoRA Done RITE: Robust Invariant Transformation Equilibration for LoRA Optimization</h1>
+
+<p>This is a pytorch reimplementation of the original LoRA-RITE in Jax.</p>
+
+<h2 id="usage">Usage</h2>
+
+<p>Please copy <code class="language-plaintext highlighter-rouge">lora_rite.py</code> to your directory or install it as a module.</p>
+
+<p>Then you can do the following to create a normal pytorch optimizer object.</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>from lora_rite import LoRARite
+
+lora_params = [p for n, p in model.named_parameters() if "lora" in n]
+optimizer = LoRARite(lora_params, lr=learning_rate, betas=(0.9,0.999))
+</code></pre></div></div>
+
+<p>Here we assume the lora parameters will be in an alternating order <code class="language-plaintext highlighter-rouge">lora_a_1, lora_b_1, lora_a_2, lora_b_2, ...</code> as in the huggingface peft LoRA implementation.
+In the rare case where this assumption is not satisfied, one can manually reorder it so that the assumption is met.</p>
+
+<h2 id="commonsense-reasoning-evaluation">Commonsense Reasoning Evaluation</h2>
+
+<p>This setting is significantly different from what is used in the paper due to the potentially high amount of effort needed to align the environments of pytorch and JAX.
+We adopt the recipe from the LLM-adapter paper, where the datasets are highly overlapped with our original experiments.</p>
+
+<p>Gemma-2B Result</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Optimizer</th>
+      <th>BOOLQ</th>
+      <th>PIQA</th>
+      <th>SIQA</th>
+      <th>HellaSwag</th>
+      <th>Winogrande</th>
+      <th>ARC-E</th>
+      <th>ARC-C</th>
+      <th>OBQA</th>
+      <th>Average</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>LoRARite</td>
+      <td>62.91</td>
+      <td>74.86</td>
+      <td>67.50</td>
+      <td>69.30</td>
+      <td>62.04</td>
+      <td>78.45</td>
+      <td>62.29</td>
+      <td>68.80</td>
+      <td>68.27</td>
+    </tr>
+    <tr>
+      <td>Adam</td>
+      <td>62.20</td>
+      <td>75.46</td>
+      <td>65.35</td>
+      <td>67.38</td>
+      <td>55.80</td>
+      <td>76.60</td>
+      <td>58.70</td>
+      <td>68.00</td>
+      <td>66.19</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 id="running-the-experiments">Running the Experiments</h3>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>cd LLM-Adapters
+
+# evaluate existing lora_rite checkpoint
+bash eval_commonsense.sh
+
+# finetune with lora_rite
+bash finetune_commonsense.sh
+</code></pre></div></div>
+
+
+      
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/anchor-js/4.1.0/anchor.min.js" integrity="sha256-lZaRhKri35AyJSypXXs4o6OPFTbTmUoltBbDCbdzegg=" crossorigin="anonymous"></script>
+    <script>anchors.add();</script>
+  </body>
+</html>
