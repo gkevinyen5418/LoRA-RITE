@@ -359,6 +359,8 @@ class LoRARite(Optimizer):
       # TODO: make this more generic
       for p1, p2 in list(zip(group["params"], group["params"][1:]))[::2]:
         param_l, param_r = p1.data, p2.data
+        param_l, _ = helper.move_lora_dim_to_last(param_l, lora_l_dim)
+        param_r, _ = helper.move_lora_dim_to_last(param_r, lora_r_dim)
 
         state = self.state[p1]["attr"]
         count = state.step
