@@ -12,11 +12,13 @@ Then you can do the following to create a normal pytorch optimizer object.
 from lora_rite import LoRARite
 
 lora_params = [p for n, p in model.named_parameters() if "lora" in n]
-optimizer = LoRARite(lora_params, lr=learning_rate, betas=(0.9,0.999))
+optimizer = LoRARite(lora_params, lr=learning_rate, betas=(0.9,0.999), clip_unmagnified_grad=max_grad_norm)
 ```
 
 Here we assume the lora parameters will be in an alternating order `lora_a_1, lora_b_1, lora_a_2, lora_b_2, ...` as in the huggingface peft LoRA implementation.
 In the rare case where this assumption is not satisfied, one can manually reorder it so that the assumption is met.
+
+To correctly adopt gradient clipping, please set the `clip_unmagnified_grad` parameter for `LoRARite` and disable it elsewhere (e.g., by setting `max_grad_norm=0` for the huggingface trainer).
 
 ## Commonsense Reasoning Evaluation
 
