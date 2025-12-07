@@ -47,6 +47,7 @@ def main(
         inputs = tokenizer(prompts, return_tensors="pt", padding=True)
         input_ids = inputs["input_ids"].to(device)
         generation_config = GenerationConfig(
+            do_sample=True,
             temperature=temperature,
             top_p=top_p,
             top_k=top_k,
@@ -120,24 +121,24 @@ def create_dir(dir_path):
 
 def generate_prompt(instruction, input=None):
     if input:
-        return f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+        return f"""Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request. 
 
                 ### Instruction:
                 {instruction}
-
+                
                 ### Input:
                 {input}
-
+                
                 ### Response:
-                """  # noqa: E501
+                """ # noqa: E501
     else:
-        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request. 
+        return f"""Below is an instruction that describes a task. Write a response that appropriately completes the request.  
 
                 ### Instruction:
                 {instruction}
-
+                
                 ### Response:
-                """  # noqa: E501
+                """ # noqa: E501
 
 
 def load_data(args) -> list:
@@ -208,14 +209,14 @@ def load_model(args) -> tuple:
         model = AutoModelForCausalLM.from_pretrained(
             base_model,
             load_in_8bit=load_8bit,
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
             device_map="auto",
             trust_remote_code=True,
         ) # fix zwq
         model = PeftModel.from_pretrained(
             model,
             lora_weights,
-            torch_dtype=torch.float16,
+            dtype=torch.float16,
             device_map={"":0}
         )
     elif device == "mps":
